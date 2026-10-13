@@ -2,7 +2,7 @@
 import git
 
 from engine.parser import parse_python_project
-from engine.git_analyzer import detect_changed_functions
+from engine.git_analyzer import detect_changed_functions,is_relevant_source_file
 
 
 def test_detects_modified_function(tmp_path):
@@ -33,3 +33,16 @@ def test_detects_modified_function(tmp_path):
     assert result["changed_files"] == ["demo_project/pricing.py"]
     assert result["changed_functions"] == ["pricing.calculate_tax"]
     assert result["unmapped_files"] == []
+
+
+def test_ignores_generated_and_non_source_files():
+    assert not is_relevant_source_file(
+        "demo_project/__pycache__/pricing.cpython-311.pyc"
+    )
+    assert not is_relevant_source_file(
+        "venv/Lib/site-packages/example.py"
+    )
+    assert not is_relevant_source_file(
+        "demo_project/.pytest_cache/example.py"
+    )
+    assert is_relevant_source_file("demo_project/pricing.py")

@@ -1,13 +1,14 @@
-# Python bytecode
+# Python bytecode / generated files
 __pycache__/
 *.py[cod]
 *.pyo
 *.pyd
 *$py.class
+.pyre/
 
 # Virtual environments
-venv/
 .venv/
+venv/
 env/
 ENV/
 
@@ -19,27 +20,26 @@ htmlcov/
 .mypy_cache/
 .ruff_cache/
 
-# Build outputs
+# Packaging / build output
 build/
 dist/
 *.egg-info/
 .eggs/
 *.egg
 
+# Local environment / secrets
+.env
+.env.*
+!.env.example
+
+# Generated reports / analysis output
+reports/
+risk_report.json
+*.risk-report.json
+ripple_report.json
+
 # Editor / OS files
 .vscode/
 .idea/
 .DS_Store
 Thumbs.db
-
-# Local environment files
-.env
-.env.*
-
-# Python tool caches
-.pyre/
-
-# Generated risk reports
-reports/
-risk_report.json
-*.risk-report.json

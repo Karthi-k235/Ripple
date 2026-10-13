@@ -2,3 +2,4 @@ networkx
 pytest
 GitPython
 streamlit
+plotly

@@ -5,6 +5,30 @@ from pathlib import Path
 import git
 
 
+IGNORED_PARTS = {
+    "__pycache__",
+    ".pytest_cache",
+    ".venv",
+    "venv",
+    "env",
+    ".mypy_cache",
+    ".ruff_cache",
+}
+
+
+def is_relevant_source_file(relative_path):
+    """Return True only for Python source files outside generated directories."""
+    path = Path(relative_path)
+
+    if path.suffix != ".py":
+        return False
+
+    if any(part in IGNORED_PARTS for part in path.parts):
+        return False
+
+    return True
+
+
 HUNK_PATTERN = re.compile(
     r"@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@"
 )
@@ -44,6 +68,8 @@ def detect_changed_functions(repo_root, project_root, functions):
     unmapped_files = []
 
     for relative_file in changed_files:
+        if not is_relevant_source_file(relative_file):
+            continue
         file_path = (Path(repo.working_tree_dir) / relative_file).resolve()
 
         if file_path.suffix != ".py" or not file_path.exists():
