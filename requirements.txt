@@ -1,3 +1,4 @@
 networkx
 pytest
 GitPython
+streamlit

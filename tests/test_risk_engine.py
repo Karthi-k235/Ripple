@@ -61,7 +61,76 @@ def test_validate_risk_runs_mapped_tests_and_writes_json(tmp_path):
     assert report["changed_functions"] == ["pricing.calculate_tax"]
     assert report["selected_tests"] == ["tests/test_pricing.py::test_tax"]
     assert report["test_result"]["status"] == "passed"
+    assert report["test_result"]["test_outcomes"] == [
+        {
+            "test": "tests/test_pricing.py::test_tax",
+            "status": "passed",
+            "detail": "",
+        }
+    ]
     assert json.loads(report_path.read_text(encoding="utf-8")) == report
+
+
+def test_validate_risk_selects_tests_for_transitive_callers(tmp_path):
+    import git
+
+    project = tmp_path / "demo_project"
+    tests = tmp_path / "tests"
+    project.mkdir()
+    tests.mkdir()
+    (project / "pricing.py").write_text(
+        "def calculate_tax(amount):\n    return amount * 0.18\n",
+        encoding="utf-8",
+    )
+    (project / "checkout.py").write_text(
+        "from pricing import calculate_tax\n\n"
+        "def checkout(amount):\n    return calculate_tax(amount)\n",
+        encoding="utf-8",
+    )
+    (project / "receipt.py").write_text(
+        "from checkout import checkout\n\n"
+        "def print_receipt(amount):\n    return checkout(amount)\n",
+        encoding="utf-8",
+    )
+    (tests / "test_flow.py").write_text(
+        "def test_flow():\n    assert 1 + 1 == 2\n",
+        encoding="utf-8",
+    )
+
+    repository = git.Repo.init(tmp_path)
+    repository.index.add(
+        [
+            "demo_project/pricing.py",
+            "demo_project/checkout.py",
+            "demo_project/receipt.py",
+            "tests/test_flow.py",
+        ]
+    )
+    repository.index.commit("initial")
+    (project / "pricing.py").write_text(
+        "def calculate_tax(amount):\n    return amount * 0.20\n",
+        encoding="utf-8",
+    )
+
+    report = validate_risk(
+        tmp_path,
+        project,
+        {
+            "pricing.calculate_tax": ["tests/test_flow.py::test_flow"],
+            "checkout.checkout": ["tests/test_flow.py::test_flow"],
+            "receipt.print_receipt": ["tests/test_flow.py::test_flow"],
+        },
+        timeout=10,
+    )
+
+    assert report["changed_functions"] == ["pricing.calculate_tax"]
+    assert report["affected_functions"] == [
+        "checkout.checkout",
+        "receipt.print_receipt",
+    ]
+    assert report["selected_tests"] == ["tests/test_flow.py::test_flow"]
+    assert report["unmapped_functions"] == []
+    assert report["test_result"]["status"] == "passed"
 
 
 def test_run_selected_tests_reports_timeout(tmp_path, monkeypatch):

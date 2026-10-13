@@ -3,6 +3,8 @@
 import json
 import subprocess
 import sys
+import tempfile
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 from engine.dependencies import build_dependency_graph
@@ -36,6 +38,41 @@ def _text(value):
     return str(value)
 
 
+def _read_test_outcomes(report_file, node_ids):
+    """Translate pytest's JUnit report into outcomes for selected node IDs."""
+    try:
+        root = ET.parse(report_file).getroot()
+    except (ET.ParseError, OSError):
+        return []
+
+    cases_by_name = {}
+    for case in root.iter("testcase"):
+        status = "passed"
+        detail = ""
+        for child in case:
+            if child.tag in {"failure", "error"}:
+                status = "failed"
+                detail = child.attrib.get("message") or (child.text or "").strip()
+                break
+            if child.tag == "skipped":
+                status = "skipped"
+                detail = child.attrib.get("message") or (child.text or "").strip()
+        cases_by_name.setdefault(case.attrib.get("name", ""), []).append(
+            {"status": status, "detail": detail}
+        )
+
+    outcomes = []
+    for node_id in node_ids:
+        test_name = node_id.rsplit("::", 1)[-1]
+        matching_cases = cases_by_name.get(test_name, [])
+        if matching_cases:
+            for case in matching_cases:
+                outcomes.append({"test": node_id, **case})
+        else:
+            outcomes.append({"test": node_id, "status": "not_reported", "detail": ""})
+    return outcomes
+
+
 def run_selected_tests(repo_root, node_ids, timeout=60):
     """Run selected pytest node IDs; an empty selection is explicitly not run."""
     if not node_ids:
@@ -48,33 +85,44 @@ def run_selected_tests(repo_root, node_ids, timeout=60):
             "stderr": "",
         }
 
-    command = [sys.executable, "-m", "pytest", *node_ids]
-    try:
-        completed = subprocess.run(
-            command,
-            cwd=str(Path(repo_root).resolve()),
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            check=False,
-        )
-        return {
-            "status": "passed" if completed.returncode == 0 else "failed",
-            "returncode": completed.returncode,
-            "timed_out": False,
-            "command": command,
-            "stdout": _text(completed.stdout),
-            "stderr": _text(completed.stderr),
-        }
-    except subprocess.TimeoutExpired as error:
-        return {
-            "status": "timed_out",
-            "returncode": None,
-            "timed_out": True,
-            "command": command,
-            "stdout": _text(error.stdout),
-            "stderr": _text(error.stderr),
-        }
+    with tempfile.TemporaryDirectory(prefix="ripple-pytest-") as temp_dir:
+        junit_report = Path(temp_dir) / "results.xml"
+        command = [
+            sys.executable,
+            "-m",
+            "pytest",
+            "--junitxml",
+            str(junit_report),
+            *node_ids,
+        ]
+        try:
+            completed = subprocess.run(
+                command,
+                cwd=str(Path(repo_root).resolve()),
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                check=False,
+            )
+            return {
+                "status": "passed" if completed.returncode == 0 else "failed",
+                "returncode": completed.returncode,
+                "timed_out": False,
+                "command": command,
+                "stdout": _text(completed.stdout),
+                "stderr": _text(completed.stderr),
+                "test_outcomes": _read_test_outcomes(junit_report, node_ids),
+            }
+        except subprocess.TimeoutExpired as error:
+            return {
+                "status": "timed_out",
+                "returncode": None,
+                "timed_out": True,
+                "command": command,
+                "stdout": _text(error.stdout),
+                "stderr": _text(error.stderr),
+                "test_outcomes": _read_test_outcomes(junit_report, node_ids),
+            }
 
 
 def validate_risk(
