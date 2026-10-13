@@ -3,7 +3,7 @@ def get_price(price, quantity):
 
 
 def calculate_tax(amount):
-    return amount * 0.18
+    return amount * 0.20
 
 
 def calculate_total(price, quantity):
